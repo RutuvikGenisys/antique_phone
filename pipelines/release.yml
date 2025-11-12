@@ -1,0 +1,55 @@
+name: Deploy to Google Cloud Run
+
+on:
+  workflow_dispatch: # Allows manual trigger
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ secrets.GCP_REGION }}
+  GAR_LOCATION: ${{ secrets.GAR_LOCATION }}
+  GAR_REPO_ID: ${{ secrets.GAR_REPO_ID }}
+  BACKEND_IMAGE: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPO_ID }}/backend-app
+  FRONTEND_IMAGE: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPO_ID }}/frontend-app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # The corresponding build workflow (e.g., build.yml for main branch) must have run prior to this.
+    # This workflow will use the GITHUB_SHA of the branch it is triggered from.
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.GCP_PROJECT_ID }}
+
+    - name: Deploy Backend to Cloud Run
+      uses: google-github-actions/deploy-cloudrun@v2
+      with:
+        service: backend-api
+        image: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+        region: ${{ env.GCP_REGION }}
+        env_vars: |
+          MONGO_URI=${{ secrets.MONGO_URI }}
+        # Add other environment variables as needed for your backend
+        # For example: NODE_ENV=production, PORT=8080 (Cloud Run uses 8080 by default)
+
+    - name: Deploy Frontend to Cloud Run
+      uses: google-github-actions/deploy-cloudrun@v2
+      with:
+        service: frontend-app
+        image: ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+        region: ${{ env.GCP_REGION }}
+        # Ensure your Next.js app listens on PORT 8080 or the port Cloud Run assigns.
+        # Cloud Run automatically sets PORT environment variable, your app should use it.
+        # You might need to set NEXT_PUBLIC_BACKEND_URL or similar if your frontend calls the backend API.
+        # env_vars: |
+        #   NEXT_PUBLIC_BACKEND_API_URL=https://backend-api-xyz-uc.a.run.app
